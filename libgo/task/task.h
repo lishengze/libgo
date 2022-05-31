@@ -4,6 +4,7 @@
 #include "../common/anys.h"
 #include "../context/context.h"
 #include "../debug/debugger.h"
+#include <stdio.h>
 
 namespace co
 {
@@ -27,6 +28,8 @@ class Processer;
 struct Task
     : public TSQueueHook, public SharedRefObject, public CoDebugger::DebuggerBase<Task>
 {
+    // printf("[Task] constructor\n");
+
     TaskState state_ = TaskState::runnable;
     uint64_t id_;
     Processer* proc_ = nullptr;

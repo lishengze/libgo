@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 ###################################################################################
 project(tutorial)
-
+set(BOOST_ROOT /usr/local/boost_1_68)
 if (CMAKE_BUILD_TYPE)
 else()
     #set(CMAKE_BUILD_TYPE RELEASE)
@@ -35,11 +35,14 @@ if (${SMALL_TEST} STREQUAL "ON")
     add_definitions(-DSMALL_TEST)
 endif()
 
-include(${PROJECT_SOURCE_DIR}/boost.cmake)
+# include(${PROJECT_SOURCE_DIR}/boost.cmake)
 
 #find_package(CURL REQUIRED)
 #target_link_libraries(main PRIVATE ${CURL_LIBRARIES})
 #include_directories(main PRIVATE ${CURL_INCLUDE_DIRS})
+
+FIND_PACKAGE(Boost 1.68.0 COMPONENTS date_time filesystem system thread serialization math_tr1 
+                                     chrono regex program_options unit_test_framework locale REQUIRED)
 
 include_directories(${PROJECT_SOURCE_DIR}/..)
 include_directories(${PROJECT_SOURCE_DIR}/../libgo)
