@@ -77,8 +77,8 @@ void Scheduler::CreateTask(TaskF const& fn, TaskOpt const& opt)
 //    printf("new tk = %p  impl = %p\n", tk, tk->impl_);
     tk->SetDeleter(Deleter(&Scheduler::DeleteTask, this));
     tk->id_ = ++GetTaskIdFactory();
-    TaskRefAffinity(tk) = opt.affinity_;
-    TaskRefLocation(tk).Init(opt.file_, opt.lineno_);
+    TaskRefAffinity(tk) = opt.affinity_; //Q
+    TaskRefLocation(tk).Init(opt.file_, opt.lineno_); //Q
     ++taskCount_;
 
     DebugPrint(dbg_task, "task(%s) created in scheduler(%p).", TaskDebugInfo(tk), (void*)this);

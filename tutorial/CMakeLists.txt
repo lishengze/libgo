@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 
 ###################################################################################
 project(tutorial)
-
+set(BOOST_ROOT /usr/local/boost_1_68)
 if (CMAKE_BUILD_TYPE)
 else()
     #set(CMAKE_BUILD_TYPE RELEASE)
