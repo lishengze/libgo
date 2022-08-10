@@ -22,6 +22,8 @@ namespace co {
 
 static int staticInitialize()
 {
+    printf("[staticInitialize]\n");
+    
     // scheduler
     TaskRefInit(Affinity);
     TaskRefInit(Location);

@@ -61,8 +61,10 @@ Scheduler* Scheduler::Create()
 
 Scheduler::Scheduler()
 {
+    printf("[Scheduler] Constructor!");
     LibgoInitialize();
     processers_.push_back(new Processer(this, 0));
+    printf("processers_.push_back(new Processer(this, 0)); \n\n");
 }
 
 Scheduler::~Scheduler()
@@ -74,9 +76,13 @@ Scheduler::~Scheduler()
 void Scheduler::CreateTask(TaskF const& fn, TaskOpt const& opt)
 {
     Task* tk = new Task(fn, opt.stack_size_ ? opt.stack_size_ : CoroutineOptions::getInstance().stack_size);
-//    printf("new tk = %p  impl = %p\n", tk, tk->impl_);
+    
+
     tk->SetDeleter(Deleter(&Scheduler::DeleteTask, this));
     tk->id_ = ++GetTaskIdFactory();
+
+    printf("[Scheduler::CreateTask] new tk = %d \n", tk->id_);
+    
     TaskRefAffinity(tk) = opt.affinity_;
     TaskRefLocation(tk).Init(opt.file_, opt.lineno_);
     ++taskCount_;
@@ -127,6 +133,8 @@ void Scheduler::Start(int minThreadNumber, int maxThreadNumber)
     for (int i = 0; i < minThreadNumber_ - 1; i++) {
         NewProcessThread();
     }
+
+    printf("minThreadNumber_: %d, processers_.size: %d\n", minThreadNumber_, processers_.size());
 
     // 唤醒协程的定时器线程
     if (timer_) {
@@ -418,6 +426,8 @@ void Scheduler::DispatcherThread()
 
 void Scheduler::AddTask(Task* tk)
 {
+    printf("[Scheduler::AddTask] Add task-%d to runnable list.\n", tk->id_);
+
     DebugPrint(dbg_scheduler, "Add task(%s) to runnable list.", tk->DebugInfo());
     auto proc = tk->proc_;
     if (proc && proc->active_) {

@@ -12,6 +12,8 @@ int Processer::s_check_ = 0;
 Processer::Processer(Scheduler * scheduler, int id)
     : scheduler_(scheduler), id_(id)
 {
+    printf("[Processer] constructor\n");
+
     waitQueue_.setLock(&runnableQueue_.LockRef());
 }
 
@@ -29,6 +31,8 @@ Scheduler* Processer::GetCurrentScheduler()
 
 void Processer::AddTask(Task *tk)
 {
+    printf("[Processer::AddTask] task-%d add into proc(%u)\n", tk->id_, id_);
+
     DebugPrint(dbg_task | dbg_scheduler, "task(%s) add into proc(%u)(%p)", tk->DebugInfo(), id_, (void*)this);
     std::unique_lock<TaskQueue::lock_t> lock(newQueue_.LockRef());
     newQueue_.pushWithoutLock(tk);
@@ -66,6 +70,7 @@ void Processer::NotifyCondition()
 
 void Processer::Process()
 {
+    printf("Processer::Process Start! \n");
     GetCurrentProcesser() = this;
 
 #if defined(LIBGO_SYS_Windows)
@@ -104,6 +109,18 @@ void Processer::Process()
 
             ++switchCount_;
 
+            switch (runningTask_->state_) {
+                case TaskState::runnable:
+                        printf("Before Run - Task-%d, runnable\n", runningTask_->id_);
+                        break;
+                case TaskState::block:
+                        printf("Before Run - Task-%d, block\n", runningTask_->id_);
+                        break;                
+                case TaskState::done:
+                        printf("Before Run - Task-%d, done\n", runningTask_->id_);
+                        break;
+            }
+
             runningTask_->SwapIn();
 
 #if ENABLE_DEBUGGER
@@ -113,6 +130,7 @@ void Processer::Process()
             switch (runningTask_->state_) {
                 case TaskState::runnable:
                     {
+                        printf("After Run - Task-%d, runnable\n", runningTask_->id_);
                         std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
                         auto next = (Task*)runningTask_->next;
                         if (next) {
@@ -139,6 +157,7 @@ void Processer::Process()
 
                 case TaskState::block:
                     {
+                        printf("After Run - Task-%d, block\n", runningTask_->id_);
                         std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
                         runningTask_ = nextTask_;
                         nextTask_ = nullptr;
@@ -148,6 +167,7 @@ void Processer::Process()
                 case TaskState::done:
                 default:
                     {
+                        printf("After Run - Task-%d, done\n", runningTask_->id_);
                         runnableQueue_.next(runningTask_, nextTask_);
                         if (!nextTask_ && addNewQuota_ > 0) {
                             if (AddNewTasks()) {

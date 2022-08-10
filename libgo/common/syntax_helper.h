@@ -1,5 +1,6 @@
 #pragma once
 #include "../scheduler/scheduler.h"
+#include <stdio.h>
 
 namespace co
 {
@@ -43,6 +44,7 @@ struct __go
         scheduler_ = nullptr;
         opt_.file_ = file;
         opt_.lineno_ = lineno;
+        printf("file: %s, lineno: %d, \n", file, lineno);
     }
 
     template <typename Function>
@@ -50,24 +52,33 @@ struct __go
     {
         if (!scheduler_) scheduler_ = Processer::GetCurrentScheduler();
         if (!scheduler_) scheduler_ = &Scheduler::getInstance();
+
+        printf("\noperator-(Function const& f)\n");
+
         scheduler_->CreateTask(f, opt_);
     }
 
     ALWAYS_INLINE __go& operator-(__go_option<opt_scheduler> const& opt)
     {
         scheduler_ = opt.scheduler_;
+        
+        printf("operator-(__go_option<opt_scheduler> const& opt)\n");
         return *this;
     }
 
     ALWAYS_INLINE __go& operator-(__go_option<opt_stack_size> const& opt)
     {
         opt_.stack_size_ = opt.stack_size_;
+
+        printf("operator-(__go_option<opt_stack_size> const& opt)\n");
         return *this;
     }
 
     ALWAYS_INLINE __go& operator-(__go_option<opt_affinity> const& opt)
     {
         opt_.affinity_ = opt.affinity_;
+
+        printf("operator-(__go_option<opt_affinity> const& opt)\n");
         return *this;
     }
 
