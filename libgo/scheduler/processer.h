@@ -19,7 +19,7 @@ class Scheduler;
 // 对应一个线程, 负责本线程的协程调度, 非线程安全.
 class Processer
 {
-    friend class Scheduler; //问题 1;
+    friend class Scheduler;
 
 private:
     Scheduler * scheduler_;
@@ -129,12 +129,6 @@ private:
 
     // 调度
     void Process();
-
-    bool GetRunningTask();
-
-    void InitRunningTaskPros();
-
-    void StartRunningTask();
 
     // 偷来的协程add进来
     void AddTask(SList<Task> && slist);
