@@ -29,7 +29,7 @@ Scheduler* Processer::GetCurrentScheduler()
 
 void Processer::AddTask(Task *tk)
 {
-    DebugPrint(dbg_task | dbg_scheduler, "task(%s) add into proc(%u)(%p)", tk->DebugInfo(), id_, (void*)this);
+    DebugPrint(dbg_task | dbg_scheduler, "task(%s) add into proc(%d)(%p)", tk->DebugInfo(), id_, (void*)this);
     std::unique_lock<TaskQueue::lock_t> lock(newQueue_.LockRef());
     newQueue_.pushWithoutLock(tk);
     newQueue_.AssertLink();
@@ -41,7 +41,7 @@ void Processer::AddTask(Task *tk)
 
 void Processer::AddTask(SList<Task> && slist)
 {
-    DebugPrint(dbg_scheduler, "task(num=%d) add into proc(%u)", (int)slist.size(), id_);
+    DebugPrint(dbg_scheduler, "task(num=%d) add into proc(%d)", (int)slist.size(), id_);
     std::unique_lock<TaskQueue::lock_t> lock(newQueue_.LockRef());
     newQueue_.pushWithoutLock(std::move(slist));
     newQueue_.AssertLink();
@@ -64,6 +64,33 @@ void Processer::NotifyCondition()
     }
 }
 
+
+bool Processer::GetRunningTask() 
+{ 
+    if (AddNewTasks()) {
+        runnableQueue_.front(runningTask_);
+    }
+                
+    if (!runningTask_) {
+        WaitCondition();
+        AddNewTasks();
+        return false;
+    }
+
+    return true;
+}
+
+void Processer::InitRunningTaskPros() 
+{
+    runningTask_->state_ = TaskState::runnable;
+    runningTask_->proc_ = this;
+}
+
+void Processer::StartRunningTask() 
+{
+    runningTask_->SwapIn();
+}
+
 void Processer::Process()
 {
     GetCurrentProcesser() = this;
@@ -76,15 +103,121 @@ void Processer::Process()
     {
         runnableQueue_.front(runningTask_);
 
-        if (!runningTask_) {
-            if (AddNewTasks())
-                runnableQueue_.front(runningTask_);
+        if (!runningTask_&& !GetRunningTask()) {
+            continue;
+        }
 
-            if (!runningTask_) {
-                WaitCondition();
-                AddNewTasks();
-                continue;
+        #if ENABLE_DEBUGGER
+            DebugPrint(dbg_scheduler, "Run [Proc(%d) QueueSize:%lu] --------------------------", id_, (unsigned long)RunnableSize());
+        #endif
+
+        addNewQuota_ = 1;
+        while (runningTask_ && !scheduler_->IsStop()) {
+            ++switchCount_;
+            
+            InitRunningTaskPros();
+
+            #if ENABLE_DEBUGGER
+                DebugPrint(dbg_switch, "enter task(%s)", runningTask_->DebugInfo());
+                if (Listener::GetTaskListener()) Listener::GetTaskListener()->onSwapIn(runningTask_->id_);
+            #endif
+            
+            StartRunningTask();
+
+            #if ENABLE_DEBUGGER
+            // 问题，谁设置的状态？
+                DebugPrint(dbg_switch, "leave task(%s) state=%d", runningTask_->DebugInfo(), (int)runningTask_->state_);
+            #endif
+
+            switch (runningTask_->state_) {
+                case TaskState::runnable:
+                    {
+                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+                        auto next = (Task*)runningTask_->next;
+                        if (next) {
+                            runningTask_ = next;
+                            runningTask_->check_ = runnableQueue_.check_;
+                            break;
+                        }
+
+                        if (addNewQuota_ < 1 || newQueue_.emptyUnsafe()) {
+                            runningTask_ = nullptr;
+                        } else {
+                            lock.unlock();
+                            if (AddNewTasks()) {
+                                runnableQueue_.next(runningTask_, runningTask_);
+                                -- addNewQuota_;
+                            } else {
+                                std::unique_lock<TaskQueue::lock_t> lock2(runnableQueue_.LockRef());
+                                runningTask_ = nullptr;
+                            }
+                        }
+
+                    }
+                    break;
+
+                case TaskState::block:
+                    {
+                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+                        runningTask_ = nextTask_;
+                        nextTask_ = nullptr;
+                    }
+                    break;
+
+                case TaskState::done:
+                default:
+                    {
+                        runnableQueue_.next(runningTask_, nextTask_);
+                        if (!nextTask_ && addNewQuota_ > 0) {
+                            if (AddNewTasks()) {
+                                runnableQueue_.next(runningTask_, nextTask_);
+                                -- addNewQuota_;
+                            }
+                        }
+
+                        DebugPrint(dbg_task, "task(%s) done.", runningTask_->DebugInfo());
+                        runnableQueue_.erase(runningTask_);
+                        if (gcQueue_.size() > 16)
+                            GC();
+                        gcQueue_.push(runningTask_);
+                        if (runningTask_->eptr_) {
+                            std::exception_ptr ep = runningTask_->eptr_;
+                            std::rethrow_exception(ep);
+                        }
+
+                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+                        runningTask_ = nextTask_;
+                        nextTask_ = nullptr;
+                    }
+                    break;
             }
+        }
+    }
+}
+
+/*
+void Processer::Process()
+{
+    GetCurrentProcesser() = this;
+
+#if defined(LIBGO_SYS_Windows)
+    FiberScopedGuard sg;
+#endif
+
+    while (!scheduler_->IsStop())
+    {
+        runnableQueue_.front(runningTask_);
+
+        if (!runningTask_&& !GetRunningTask()) {
+            continue;
+            // if (AddNewTasks())
+            //     runnableQueue_.front(runningTask_);
+
+            // if (!runningTask_) {
+            //     WaitCondition();
+            //     AddNewTasks();
+            //     continue;
+            // }
         }
 
 #if ENABLE_DEBUGGER
@@ -175,7 +308,7 @@ void Processer::Process()
         }
     }
 }
-
+*/
 Task* Processer::GetCurrentTask()
 {
     auto proc = GetCurrentProcesser();

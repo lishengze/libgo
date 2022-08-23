@@ -17,6 +17,7 @@ message("  CMAKE_COMMAND: ${CMAKE_COMMAND}")
 
 set(BUILD_DYNAMIC ON)  # default generate dynamic lib
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # Generate compile_commands.json
+set(ENABLE_DEBUGGER ON)
 
 option(ENABLE_DEBUGGER "enable debugger" OFF)
 if (ENABLE_DEBUGGER)
