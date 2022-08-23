@@ -27,3 +27,4 @@ third_party/boost.context/stage/
 third_party/boost.context/tools/build/src/engine/bootstrap/jam*
 
 test/gtest_unit/build
+.vscode/
