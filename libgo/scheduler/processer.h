@@ -136,6 +136,14 @@ private:
 
     void StartRunningTask();
 
+    void UpdateRunningTask();
+
+    void ProcessRunnableTask();
+
+    void ProcessBlockTask();
+
+    void ProcessDoneTask();
+
     // 偷来的协程add进来
     void AddTask(SList<Task> && slist);
 

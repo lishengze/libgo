@@ -261,6 +261,7 @@ int pipe(int pipefd[2])
     }
     return res;
 }
+
 #if defined(LIBGO_SYS_Linux)
 int pipe2(int pipefd[2], int flags)
 {
@@ -277,6 +278,7 @@ int pipe2(int pipefd[2], int flags)
     return res;
 }
 #endif
+
 int socket(int domain, int type, int protocol)
 {
     if (!socket_f) initHook();

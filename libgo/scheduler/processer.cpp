@@ -91,6 +91,81 @@ void Processer::StartRunningTask()
     runningTask_->SwapIn();
 }
 
+void Processer::ProcessRunnableTask()
+{
+    std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+    auto next = (Task*)runningTask_->next; //Q?,When assign next?
+    if (next) {
+        runningTask_ = next;
+        runningTask_->check_ = runnableQueue_.check_;
+        return;
+    }
+
+    if (addNewQuota_ < 1 || newQueue_.emptyUnsafe()) {
+        runningTask_ = nullptr;
+    } else {
+        lock.unlock();
+        if (AddNewTasks()) {
+            // newQueue_ is not emtpy so runnableQueue_ has items; 
+            runnableQueue_.next(runningTask_, runningTask_); //runningTask->next is not null, runningTask = (Task*)runningTask->next
+            -- addNewQuota_;
+        } else {
+            std::unique_lock<TaskQueue::lock_t> lock2(runnableQueue_.LockRef());
+            runningTask_ = nullptr;
+        }
+    }
+}
+
+void Processer::ProcessDoneTask()
+{
+    runnableQueue_.next(runningTask_, nextTask_);
+    if (!nextTask_ && addNewQuota_ > 0) {
+        if (AddNewTasks()) {
+            runnableQueue_.next(runningTask_, nextTask_);
+            -- addNewQuota_;
+        }
+    }
+
+    DebugPrint(dbg_task, "task(%s) done.", runningTask_->DebugInfo());
+    runnableQueue_.erase(runningTask_);
+    if (gcQueue_.size() > 16)
+        GC();
+    gcQueue_.push(runningTask_);
+    if (runningTask_->eptr_) {
+        std::exception_ptr ep = runningTask_->eptr_;
+        std::rethrow_exception(ep);
+    }
+
+    std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+    runningTask_ = nextTask_;
+    nextTask_ = nullptr;
+}
+
+void Processer::ProcessBlockTask()
+{
+    std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
+    runningTask_ = nextTask_; //Q, When Assign This;
+    nextTask_ = nullptr;
+}
+
+void Processer::UpdateRunningTask()
+{
+    switch (runningTask_->state_) {
+        case TaskState::runnable:
+            ProcessRunnableTask();
+            break;
+
+        case TaskState::block:
+            ProcessBlockTask();
+            break;
+
+        case TaskState::done:
+        default:
+            ProcessDoneTask();
+            break;
+    }
+}
+
 void Processer::Process()
 {
     GetCurrentProcesser() = this;
@@ -111,7 +186,7 @@ void Processer::Process()
             DebugPrint(dbg_scheduler, "Run [Proc(%d) QueueSize:%lu] --------------------------", id_, (unsigned long)RunnableSize());
         #endif
 
-        addNewQuota_ = 1;
+        addNewQuota_ = 1; // Only Add One New Task?
         while (runningTask_ && !scheduler_->IsStop()) {
             ++switchCount_;
             
@@ -125,190 +200,15 @@ void Processer::Process()
             StartRunningTask();
 
             #if ENABLE_DEBUGGER
-            // 问题，谁设置的状态？
+            //Q? Who Set The Task State?
                 DebugPrint(dbg_switch, "leave task(%s) state=%d", runningTask_->DebugInfo(), (int)runningTask_->state_);
             #endif
 
-            switch (runningTask_->state_) {
-                case TaskState::runnable:
-                    {
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        auto next = (Task*)runningTask_->next;
-                        if (next) {
-                            runningTask_ = next;
-                            runningTask_->check_ = runnableQueue_.check_;
-                            break;
-                        }
-
-                        if (addNewQuota_ < 1 || newQueue_.emptyUnsafe()) {
-                            runningTask_ = nullptr;
-                        } else {
-                            lock.unlock();
-                            if (AddNewTasks()) {
-                                runnableQueue_.next(runningTask_, runningTask_);
-                                -- addNewQuota_;
-                            } else {
-                                std::unique_lock<TaskQueue::lock_t> lock2(runnableQueue_.LockRef());
-                                runningTask_ = nullptr;
-                            }
-                        }
-
-                    }
-                    break;
-
-                case TaskState::block:
-                    {
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        runningTask_ = nextTask_;
-                        nextTask_ = nullptr;
-                    }
-                    break;
-
-                case TaskState::done:
-                default:
-                    {
-                        runnableQueue_.next(runningTask_, nextTask_);
-                        if (!nextTask_ && addNewQuota_ > 0) {
-                            if (AddNewTasks()) {
-                                runnableQueue_.next(runningTask_, nextTask_);
-                                -- addNewQuota_;
-                            }
-                        }
-
-                        DebugPrint(dbg_task, "task(%s) done.", runningTask_->DebugInfo());
-                        runnableQueue_.erase(runningTask_);
-                        if (gcQueue_.size() > 16)
-                            GC();
-                        gcQueue_.push(runningTask_);
-                        if (runningTask_->eptr_) {
-                            std::exception_ptr ep = runningTask_->eptr_;
-                            std::rethrow_exception(ep);
-                        }
-
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        runningTask_ = nextTask_;
-                        nextTask_ = nullptr;
-                    }
-                    break;
-            }
+            UpdateRunningTask();
         }
     }
 }
 
-/*
-void Processer::Process()
-{
-    GetCurrentProcesser() = this;
-
-#if defined(LIBGO_SYS_Windows)
-    FiberScopedGuard sg;
-#endif
-
-    while (!scheduler_->IsStop())
-    {
-        runnableQueue_.front(runningTask_);
-
-        if (!runningTask_&& !GetRunningTask()) {
-            continue;
-            // if (AddNewTasks())
-            //     runnableQueue_.front(runningTask_);
-
-            // if (!runningTask_) {
-            //     WaitCondition();
-            //     AddNewTasks();
-            //     continue;
-            // }
-        }
-
-#if ENABLE_DEBUGGER
-        DebugPrint(dbg_scheduler, "Run [Proc(%d) QueueSize:%lu] --------------------------", id_, RunnableSize());
-#endif
-
-        addNewQuota_ = 1;
-        while (runningTask_ && !scheduler_->IsStop()) {
-            runningTask_->state_ = TaskState::runnable;
-            runningTask_->proc_ = this;
-
-#if ENABLE_DEBUGGER
-            DebugPrint(dbg_switch, "enter task(%s)", runningTask_->DebugInfo());
-            if (Listener::GetTaskListener())
-                Listener::GetTaskListener()->onSwapIn(runningTask_->id_);
-#endif
-
-            ++switchCount_;
-
-            runningTask_->SwapIn();
-
-#if ENABLE_DEBUGGER
-            DebugPrint(dbg_switch, "leave task(%s) state=%d", runningTask_->DebugInfo(), (int)runningTask_->state_);
-#endif
-
-            switch (runningTask_->state_) {
-                case TaskState::runnable:
-                    {
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        auto next = (Task*)runningTask_->next;
-                        if (next) {
-                            runningTask_ = next;
-                            runningTask_->check_ = runnableQueue_.check_;
-                            break;
-                        }
-
-                        if (addNewQuota_ < 1 || newQueue_.emptyUnsafe()) {
-                            runningTask_ = nullptr;
-                        } else {
-                            lock.unlock();
-                            if (AddNewTasks()) {
-                                runnableQueue_.next(runningTask_, runningTask_);
-                                -- addNewQuota_;
-                            } else {
-                                std::unique_lock<TaskQueue::lock_t> lock2(runnableQueue_.LockRef());
-                                runningTask_ = nullptr;
-                            }
-                        }
-
-                    }
-                    break;
-
-                case TaskState::block:
-                    {
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        runningTask_ = nextTask_;
-                        nextTask_ = nullptr;
-                    }
-                    break;
-
-                case TaskState::done:
-                default:
-                    {
-                        runnableQueue_.next(runningTask_, nextTask_);
-                        if (!nextTask_ && addNewQuota_ > 0) {
-                            if (AddNewTasks()) {
-                                runnableQueue_.next(runningTask_, nextTask_);
-                                -- addNewQuota_;
-                            }
-                        }
-
-                        DebugPrint(dbg_task, "task(%s) done.", runningTask_->DebugInfo());
-                        runnableQueue_.erase(runningTask_);
-                        if (gcQueue_.size() > 16)
-                            GC();
-                        gcQueue_.push(runningTask_);
-                        if (runningTask_->eptr_) {
-                            std::exception_ptr ep = runningTask_->eptr_;
-                            std::rethrow_exception(ep);
-                        }
-
-                        std::unique_lock<TaskQueue::lock_t> lock(runnableQueue_.LockRef());
-                        runningTask_ = nextTask_;
-                        nextTask_ = nullptr;
-                    }
-                    break;
-            }
-        }
-    }
-}
-*/
 Task* Processer::GetCurrentTask()
 {
     auto proc = GetCurrentProcesser();
