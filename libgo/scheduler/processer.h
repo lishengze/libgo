@@ -157,6 +157,9 @@ private:
     // 阻塞状态不再加入新的协程, 并由调度线程steal走所有协程(正在执行的除外)
     bool IsBlocking();
 
+    // 单个协程执行时长超过预设值 并且不是 Waiting 状态;
+    bool IsActuallyBlocking();
+
     // 偷协程
     SList<Task> Steal(std::size_t n);
     /// --------------------------------------

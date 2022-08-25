@@ -45,6 +45,14 @@ public:
     //          如果maxThreadNumber大于minThreadNumber, 则当协程产生长时间阻塞时,
     //          可以自动扩展调度线程数.
     void Start(int minThreadNumber = 1, int maxThreadNumber = 0);
+
+    Processer* InitProcessers(int minThreadNumber, int maxThreadNumber);
+
+    void InitTimer();
+
+    void InitDispather();
+
+
     void goStart(int minThreadNumber = 1, int maxThreadNumber = 0);
     static const int s_ulimitedMaxThreadNumber = 40960;
 
@@ -99,11 +107,22 @@ private:
     // 2.侦测到阻塞的P(单个协程运行时间超过阀值), 将P中的其他协程steal给其他P
     void DispatcherThread();
 
+    void SetBlockingInfo(const idx_t& pcount, int& isActiveCount, ActiveMap& actives, BlockMap& blockings);
+
+    void SetActiveInfo(const idx_t& pcount,  ActiveMap& activeTaskProcessorMap, std::size_t& totalRunnableTasks, 
+                        std::size_t& activeTasks, int& availableProcessers);
+
+    bool TryNewProcesserThread(ActiveMap& activeTaskProcessorMap, idx_t& pcount);
+
     void NewProcessThread();
 
-    void DispatchBlocks(BlockMap &blockings,ActiveMap &actives);
+    void DispatchBlocks(BlockMap &blockings,ActiveMap &activeTaskProcessorMap);
 
-    void LoadBalance(ActiveMap &actives,std::size_t activeTasks);
+    void LoadBalance(ActiveMap &activeTaskProcessorMap,std::size_t activeTasks);
+
+    void UpdateActiveMap(ActiveMap &activeTaskProcessorMap, const idx_t& pcount);
+
+    void PrintActiveMap(const ActiveMap &activeTaskProcessorMap);
     
     TimerType & StaticGetTimer();
 

@@ -263,6 +263,12 @@ bool Processer::IsBlocking()
     return NowMicrosecond() > markTick_ + CoroutineOptions::getInstance().cycle_timeout_us;
 }
 
+bool Processer::IsActuallyBlocking()
+{
+    return !IsWaiting() && IsBlocking();
+}
+
+
 void Processer::Mark()
 {
     if (runningTask_ && markSwitch_ != switchCount_) {

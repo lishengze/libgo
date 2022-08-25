@@ -108,11 +108,27 @@ bool Scheduler::IsEmpty()
     return taskCount_ == 0;
 }
 
+
+
 void Scheduler::Start(int minThreadNumber, int maxThreadNumber)
 {
     if (!started_.try_lock())
         throw std::logic_error("libgo repeated call Scheduler::Start");
 
+    auto mainProc = InitProcessers(minThreadNumber, maxThreadNumber);
+
+    InitTimer();
+
+    InitDispather();
+
+    std::thread(FastSteadyClock::ThreadRun).detach();
+
+    DebugPrint(dbg_scheduler, "Scheduler::Start minThreadNumber_=%d, maxThreadNumber_=%d", minThreadNumber_, maxThreadNumber_);
+    mainProc->Process();
+}
+
+Processer* Scheduler::InitProcessers(int minThreadNumber, int maxThreadNumber) 
+{
     if (minThreadNumber < 1)
        minThreadNumber = std::thread::hardware_concurrency();
 
@@ -127,7 +143,10 @@ void Scheduler::Start(int minThreadNumber, int maxThreadNumber)
     for (int i = 0; i < minThreadNumber_ - 1; i++) {
         NewProcessThread();
     }
+    return mainProc;
+}
 
+void Scheduler::InitTimer() { 
     // 唤醒协程的定时器线程
     if (timer_) {
         timer_->SetPoolSize(1000, 100);
@@ -137,7 +156,9 @@ void Scheduler::Start(int minThreadNumber, int maxThreadNumber)
             });
         timerThread_.swap(t);
     }
+}
 
+void Scheduler::InitDispather() {
     // 调度线程
     if (maxThreadNumber_ > 1) {
         DebugPrint(dbg_scheduler, "---> Create DispatcherThread");
@@ -149,16 +170,14 @@ void Scheduler::Start(int minThreadNumber, int maxThreadNumber)
     } else {
         DebugPrint(dbg_scheduler, "---> No DispatcherThread");
     }
-
-    std::thread(FastSteadyClock::ThreadRun).detach();
-
-    DebugPrint(dbg_scheduler, "Scheduler::Start minThreadNumber_=%d, maxThreadNumber_=%d", minThreadNumber_, maxThreadNumber_);
-    mainProc->Process();
 }
+
 void Scheduler::goStart(int minThreadNumber, int maxThreadNumber)
 {
     std::thread([=]{ this->Start(minThreadNumber, maxThreadNumber); }).detach();
 }
+
+
 void Scheduler::Stop()
 {
     std::unique_lock<std::mutex> lock(stopMtx_);
@@ -181,6 +200,7 @@ void Scheduler::Stop()
     if (timerThread_.joinable())
         timerThread_.join();
 }
+
 void Scheduler::UseAloneTimerThread()
 {
     TimerType * timer = new TimerType;
@@ -233,13 +253,125 @@ void Scheduler::NewProcessThread()
     processers_.push_back(p);
 }
 
-void Scheduler::DispatchBlocks(Scheduler::BlockMap &blockings,Scheduler::ActiveMap &actives)
+
+void Scheduler::DispatcherThread()
 {
-   if(blockings.size() == 0)
+    DebugPrint(dbg_scheduler, "---> Start DispatcherThread");
+    while (!stop_) {
+        // TODO: 用condition_variable降低cpu使用率
+        std::this_thread::sleep_for(std::chrono::microseconds(CoroutineOptions::getInstance().dispatcher_thread_cycle_us));
+ 
+        // 1.收集负载值, 收集阻塞状态, 打阻塞标记, 唤醒处于等待状态但是有任务的P
+        idx_t       pcount              = processers_.size();
+        std::size_t totalRunnableTasks  = 0; // 所有待执行的任务数目;
+        std::size_t activeTasks         = 0;
+        ActiveMap   activeTaskProcessorMap;
+        BlockMap    blockingProcesserTaskMap;
+
+        int activeProcesserCount = 0; //正常运行的Processor数目;
+
+        SetBlockingInfo(pcount, activeProcesserCount, activeTaskProcessorMap, blockingProcesserTaskMap);
+
+        int availableProcessers = activeProcesserCount < minThreadNumber_ ? (minThreadNumber_ - activeProcesserCount) : 0;
+        
+        SetActiveInfo(pcount, activeTaskProcessorMap, totalRunnableTasks, activeTasks, availableProcessers);
+
+        if (!TryNewProcesserThread(activeTaskProcessorMap, pcount)) continue;
+
+        printf("Original activeTaskProcessorMap: \n");
+        PrintActiveMap(activeTaskProcessorMap);
+
+        DispatchBlocks(blockingProcesserTaskMap,activeTaskProcessorMap);
+
+        printf("After DispatchBlocks activeTaskProcessorMap: \n");
+        PrintActiveMap(activeTaskProcessorMap);
+
+        // 这个时候应该更新下 activeTaskProcessorMap, 整个的任务分配已经变化了;
+        UpdateActiveMap(activeTaskProcessorMap, pcount);
+
+        LoadBalance(activeTaskProcessorMap,activeTasks);
+        printf("After LoadBalance activeTaskProcessorMap: \n");
+        PrintActiveMap(activeTaskProcessorMap);       
+    }
+}
+
+void Scheduler::SetBlockingInfo(const idx_t& pcount, int& activeProcesserCount, ActiveMap& activeTaskProcessorMap, BlockMap& blockingProcesserTaskMap)
+{
+    for (std::size_t i = 0; i < pcount; i++) {
+        auto p = processers_[i];
+        //等待中的p不能算阻塞,无法加入新协程导致p饿死
+        if (p->IsActuallyBlocking()) {
+            blockingProcesserTaskMap[i] = p->RunnableSize();
+            if (p->active_) {
+                p->active_ = false;
+                DebugPrint(dbg_scheduler, "Block processer(%d)", (int)i);
+            }
+        }
+        
+        if (p->active_)
+            activeProcesserCount++;
+    }
+}
+
+void Scheduler::SetActiveInfo(const idx_t& pcount,  ActiveMap& activeTaskProcessorMap, 
+                                std::size_t& totalRunnableTasks, std::size_t& activeTasks, int& availableProcessers)
+{
+    for (std::size_t processer_index = 0; processer_index < pcount; processer_index++) {
+        auto p = processers_[processer_index];
+        std::size_t curRunnableTasks = p->RunnableSize();
+        totalRunnableTasks += curRunnableTasks;
+
+        // 激活非IsActuallyBlocking 并且 p->active_ 为 false 的 processor
+        // Q? active_ == false 的情况暂时只有一种，就是在SetBlockingProcessers时 IsActuallyBlocking 的P, 应该是冲突的;
+        if (!p->active_) {
+            // 处于等待中的p也应该唤醒
+            // if (availableProcessers > 0 && (!p->IsBlocking() || p->IsWaiting())) {
+            if (availableProcessers > 0 && !p->IsActuallyBlocking()) {
+                p->active_ = true;
+                availableProcessers--;
+                DebugPrint(dbg_scheduler, "Active processer(%d)", (int)processer_index);
+                lastActive_ = processer_index;
+            }
+        }
+
+        if (p->active_) {
+            activeTaskProcessorMap.insert(ActiveMap::value_type{curRunnableTasks, processer_index});
+            activeTasks += p->RunnableSize();
+            p->Mark();
+        }
+
+        //Q? 为什么要唤醒？到条件了？
+        if (curRunnableTasks > 0 && p->IsWaiting()) {
+            p->NotifyCondition();
+        }
+    }
+}
+
+bool Scheduler::TryNewProcesserThread(ActiveMap& activeTaskProcessorMap, idx_t& pcount)
+{
+    if (activeTaskProcessorMap.empty() && (int)pcount < maxThreadNumber_) {
+        // 全部阻塞, 并且还有协程待执行, 起新线程
+        NewProcessThread();
+        activeTaskProcessorMap.insert(ActiveMap::value_type{0, pcount});
+        ++pcount;
+    }
+
+    // 全部阻塞并且不能起新线程, 无需调度, 等待即可
+    if (activeTaskProcessorMap.empty())
+        return false;
+    
+    return true;
+}
+
+// 将阻塞的Processer 的Task取出，分配给负载没那么高的 processer;
+void Scheduler::DispatchBlocks(Scheduler::BlockMap &blockingProcesserTaskMap,Scheduler::ActiveMap &activeTaskProcessorMap)
+{
+   if(blockingProcesserTaskMap.size() == 0)
       return;
-   //将阻塞p的协程都steal出来
+   
+   //将阻塞的Processer的协程都steal出来
    SList<Task> tasks;
-   for (auto &kv : blockings) {
+   for (auto &kv : blockingProcesserTaskMap) {
         auto p = processers_[kv.first];
         tasks.append(p->Steal(0));
     }
@@ -255,9 +387,9 @@ void Scheduler::DispatchBlocks(Scheduler::BlockMap &blockings,Scheduler::ActiveM
     //平分的协程数
     std::size_t avg = 0;    
     
-    auto LowerP = actives.begin();
+    auto LowerP = activeTaskProcessorMap.begin();
 
-    for( ; LowerP != actives.end(); ++LowerP)
+    for( ; LowerP != activeTaskProcessorMap.end(); ++LowerP)
     {
          totalTasks += LowerP->first;
          ++LowerNum;
@@ -272,10 +404,10 @@ void Scheduler::DispatchBlocks(Scheduler::BlockMap &blockings,Scheduler::ActiveM
          }        
     }
 
-    if(LowerP != actives.end())
+    if(LowerP != activeTaskProcessorMap.end())
        ++LowerP;
     
-    for(auto it = actives.begin(); it != LowerP; ++it)
+    for(auto it = activeTaskProcessorMap.begin(); it != LowerP; ++it)
     {
         SList<Task> in = tasks.cut(avg - it->first);
         
@@ -289,22 +421,32 @@ void Scheduler::DispatchBlocks(Scheduler::BlockMap &blockings,Scheduler::ActiveM
     //还剩下task就全都给最小的p
     if(!tasks.empty())
     {
-        auto p = processers_[actives.begin()->second];
+        auto p = processers_[activeTaskProcessorMap.begin()->second];
         p->AddTask(std::move(tasks));
     }
-
-    
 }
-void Scheduler::LoadBalance(Scheduler::ActiveMap &actives,std::size_t activeTasks)
+
+void Scheduler::UpdateActiveMap(ActiveMap &activeTaskProcessorMap, const idx_t& pcount)
 {
-    
-     std::size_t avg = activeTasks / actives.size();
+    activeTaskProcessorMap.clear();
+    for (std::size_t processer_index = 0; processer_index < pcount; processer_index++) {
+        auto p = processers_[processer_index];
+        if (p->active_) {
+            activeTaskProcessorMap.insert(ActiveMap::value_type{p->RunnableSize(), processer_index});
+        }
+    }    
+}
+
+void Scheduler::LoadBalance(Scheduler::ActiveMap &activeTaskProcessorMap,std::size_t activeTasks)
+{
+     // 这里的activeTasks 不是现有的所有待执行的任务数，没有加上从阻塞的Processer 获取的 task;
+     std::size_t avg = activeTasks / activeTaskProcessorMap.size(); 
      
-     if(actives.begin()->first > avg * CoroutineOptions::getInstance().load_balance_rate)
+     if(activeTaskProcessorMap.begin()->first > avg * CoroutineOptions::getInstance().load_balance_rate)
         return;
      
      SList<Task> tasks;
-     for(auto it = actives.rbegin(); it != actives.rend(); ++it)
+     for(auto it = activeTaskProcessorMap.rbegin(); it != activeTaskProcessorMap.rend(); ++it)
      {
           
           if(it->first <= avg)
@@ -320,7 +462,7 @@ void Scheduler::LoadBalance(Scheduler::ActiveMap &actives,std::size_t activeTask
      if(tasks.empty())
         return;
      
-     for(auto &kv : actives)
+     for(auto &kv : activeTaskProcessorMap)
      {
          if(kv.first >= avg)
             break;
@@ -333,88 +475,11 @@ void Scheduler::LoadBalance(Scheduler::ActiveMap &actives,std::size_t activeTask
      //如果还剩下task,全都给最小的p
      if(!tasks.empty())
      {
-         auto p = processers_[actives.begin()->second];
+         auto p = processers_[activeTaskProcessorMap.begin()->second];
          p->AddTask(std::move(tasks));
      }
 }
-void Scheduler::DispatcherThread()
-{
-    DebugPrint(dbg_scheduler, "---> Start DispatcherThread");
-    while (!stop_) {
-        // TODO: 用condition_variable降低cpu使用率
-        std::this_thread::sleep_for(std::chrono::microseconds(CoroutineOptions::getInstance().dispatcher_thread_cycle_us));
- 
-        // 1.收集负载值, 收集阻塞状态, 打阻塞标记, 唤醒处于等待状态但是有任务的P
-        idx_t pcount = processers_.size();
-        std::size_t totalLoadaverage = 0;
-        ActiveMap actives;
-        BlockMap blockings;
 
-        int isActiveCount = 0;
-        for (std::size_t i = 0; i < pcount; i++) {
-            auto p = processers_[i];
-            //等待中的p不能算阻塞,无法加入新协程导致p饿死
-            if (!p->IsWaiting() && p->IsBlocking()) {
-                blockings[i] = p->RunnableSize();
-                if (p->active_) {
-                    p->active_ = false;
-                    DebugPrint(dbg_scheduler, "Block processer(%d)", (int)i);
-                }
-            }
-            
-            if (p->active_)
-                isActiveCount++;
-        }
-       
-
-        // 还可激活几个P
-        int activeQuota = isActiveCount < minThreadNumber_ ? (minThreadNumber_ - isActiveCount) : 0;
-        
-        std::size_t activeTasks = 0;
-        for (std::size_t i = 0; i < pcount; i++) {
-            auto p = processers_[i];
-            std::size_t loadaverage = p->RunnableSize();
-            totalLoadaverage += loadaverage;
-
-            if (!p->active_) {
-                //处于等待中的p也应该唤醒
-                if (activeQuota > 0 && (!p->IsBlocking() || p->IsWaiting())) {
-                    p->active_ = true;
-                    activeQuota--;
-                    DebugPrint(dbg_scheduler, "Active processer(%d)", (int)i);
-                    lastActive_ = i;
-                }
-            }
-
-            if (p->active_) {
-                actives.insert(ActiveMap::value_type{loadaverage, i});
-                activeTasks += p->RunnableSize();
-                p->Mark();
-            }
-
-            if (loadaverage > 0 && p->IsWaiting()) {
-                p->NotifyCondition();
-            }
-        }
-
-        if (actives.empty() && (int)pcount < maxThreadNumber_) {
-            // 全部阻塞, 并且还有协程待执行, 起新线程
-            NewProcessThread();
-            actives.insert(ActiveMap::value_type{0, pcount});
-            ++pcount;
-        }
-
-        
-        // 全部阻塞并且不能起新线程, 无需调度, 等待即可
-        if (actives.empty())
-            continue;
-        
-        DispatchBlocks(blockings,actives);
-
-        LoadBalance(actives,activeTasks);
-       
-    }
-}
 
 void Scheduler::AddTask(Task* tk)
 {
@@ -440,6 +505,14 @@ void Scheduler::AddTask(Task* tk)
             break;
     }
     proc->AddTask(tk);
+}
+
+void Scheduler::PrintActiveMap(const ActiveMap &activeTaskProcessorMap)
+{
+    for(auto &kv : activeTaskProcessorMap)
+    {
+        printf("Processer[%d]: Tasks: %d\n", kv.second, kv.first);
+    }
 }
 
 uint32_t Scheduler::TaskCount()
