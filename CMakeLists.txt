@@ -15,6 +15,8 @@ message("------------ Options -------------")
 message("  CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
 message("  CMAKE_COMMAND: ${CMAKE_COMMAND}")
 
+set(CMAKE_INSTALL_PREFIX "/home/lsz/Code/Git/study/c--study/cmake/test_des")
+
 set(BUILD_DYNAMIC ON)  # default generate dynamic lib
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # Generate compile_commands.json
 set(ENABLE_DEBUGGER ON)

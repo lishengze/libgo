@@ -267,7 +267,6 @@ void Scheduler::DispatcherThread()
         std::size_t activeTasks         = 0;
         ActiveMap   activeTaskProcessorMap;
         BlockMap    blockingProcesserTaskMap;
-
         int activeProcesserCount = 0; //正常运行的Processor数目;
 
         SetBlockingInfo(pcount, activeProcesserCount, activeTaskProcessorMap, blockingProcesserTaskMap);
