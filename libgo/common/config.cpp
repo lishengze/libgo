@@ -50,8 +50,10 @@ std::mutex gDbgLock;
 CoroutineOptions::CoroutineOptions()
     : protect_stack_page(StackTraits::GetProtectStackPageSize()),
     stack_malloc_fn(StackTraits::MallocFunc()),
-    stack_free_fn(StackTraits::FreeFunc())
+    stack_free_fn(StackTraits::FreeFunc()), 
+    debug_output(stdout)
 {
+    printf("---- Init CoroutineOptions ---\n");
 }
 
 const char* BaseFile(const char* file)
