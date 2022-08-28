@@ -228,30 +228,30 @@ extern std::mutex gDbgLock;
 
 // if (UNLIKELY(::co::CoroutineOptions::getInstance().debug & (type))) { \
 
-#define DebugPrint(type, fmt, ...) \
-    do { \
-        if (UNLIKELY((type))) { \
-            ::co::ErrnoStore es; \
-            std::unique_lock<std::mutex> lock(::co::gDbgLock); \
-            fprintf(::co::CoroutineOptions::getInstance().debug_output, "[%s][%05d][%04d][%06d]%s:%d:(%s)\t " fmt "\n", \
-                    ::co::GetCurrentTimeStr().c_str(),\
-                    ::co::GetCurrentProcessID(), ::co::GetCurrentThreadID(), ::co::GetCurrentCoroID(), \
-                    ::co::BaseFile(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__); \
-            fflush(::co::CoroutineOptions::getInstance().debug_output); \
-            printf("[%s][%05d][%04d][%06d]%s:%d:(%s)\t " fmt "\n", \
-                                ::co::GetCurrentTimeStr().c_str(),\
-                    ::co::GetCurrentProcessID(), ::co::GetCurrentThreadID(), ::co::GetCurrentCoroID(), \
-                    ::co::BaseFile(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__); \
-        } else \
-            printf("debug_mode: %p, type:%d\n", ::co::CoroutineOptions::getInstance().debug, type); \
-    } while(0)
-
 // #define DebugPrint(type, fmt, ...) \
 //     do { \
-//             printf("[%s]%s:%d:(%s)\t " fmt "\n", \
-//                                 ::co::GetCurrentTimeStr().c_str(),\
+//         if (UNLIKELY((type))) { \
+//             ::co::ErrnoStore es; \
+//             std::unique_lock<std::mutex> lock(::co::gDbgLock); \
+//             fprintf(::co::CoroutineOptions::getInstance().debug_output, "[%s][%05d][%04d][%06d]%s:%d:(%s)\t " fmt "\n", \
+//                     ::co::GetCurrentTimeStr().c_str(),\
+//                     ::co::GetCurrentProcessID(), ::co::GetCurrentThreadID(), ::co::GetCurrentCoroID(), \
 //                     ::co::BaseFile(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+//             fflush(::co::CoroutineOptions::getInstance().debug_output); \
+//             printf("[%s][%05d][%04d][%06d]%s:%d:(%s)\t " fmt "\n", \
+//                                 ::co::GetCurrentTimeStr().c_str(),\
+//                     ::co::GetCurrentProcessID(), ::co::GetCurrentThreadID(), ::co::GetCurrentCoroID(), \
+//                     ::co::BaseFile(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+//         } else \
+//             printf("debug_mode: %p, type:%d\n", ::co::CoroutineOptions::getInstance().debug, type); \
 //     } while(0)
+
+#define DebugPrint(type, fmt, ...) \
+    do { \
+            printf("[%s]%s:%d:(%s)\t " fmt "\n", \
+                                ::co::GetCurrentTimeStr().c_str(),\
+                    ::co::BaseFile(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__); \
+    } while(0)
 
 
 #define LIBGO_E2S_DEFINE(x) \
