@@ -20,6 +20,7 @@ set(CMAKE_INSTALL_PREFIX "/usr/local")
 set(BUILD_DYNAMIC ON)  # default generate dynamic lib
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # Generate compile_commands.json
 set(ENABLE_DEBUGGER ON)
+ENABLE_LANGUAGE(ASM)
 
 option(ENABLE_DEBUGGER "enable debugger" OFF)
 if (ENABLE_DEBUGGER)
