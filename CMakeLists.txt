@@ -48,7 +48,8 @@ configure_file(${PROJECT_SOURCE_DIR}/libgo/common/cmake_config.h.in ${PROJECT_SO
 message("----------------------------------")
 
 if (UNIX)
-    set(CMAKE_CXX_FLAGS "-std=c++11 -D__const__=  -fPIC -fno-strict-aliasing -Wall ${CMAKE_CXX_FLAGS}")
+    set(CMAKE_CXX_FLAGS "-std=c++11 -D__const__=__unused__ -fPIC -fno-strict-aliasing -Wall ${CMAKE_CXX_FLAGS}")
+    # set(CMAKE_CXX_FLAGS "-std=c++11 -D__const__=__unused__")
     set(CMAKE_CXX_FLAGS_DEBUG "-g")
     set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 -DNDEBUG")
 
@@ -125,6 +126,12 @@ if (UNIX)
         install(TARGETS ${SHARED_T} LIBRARY DESTINATION "lib" ARCHIVE DESTINATION "lib")
     endif()
 
+    set(SHARED_T "libgo_dynamic")
+    add_library(${PROJECT_NAME} SHARED ${CO_SRC_LIST})
+    set_target_properties(${PROJECT_NAME}  PROPERTIES OUTPUT_NAME "${TARGET}")
+    target_link_libraries(${PROJECT_NAME} ${LINK_LIBS} -ldl)
+    # install(TARGETS ${SHARED_T} LIBRARY DESTINATION "lib" ARCHIVE DESTINATION "lib")    
+
     add_custom_target(debug
         COMMAND ${CMAKE_COMMAND} -DCMAKE_BUILD_TYPE=DEBUG ${CMAKE_SOURCE_DIR}
         COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target all
@@ -153,6 +160,29 @@ if (UNIX)
         COMMAND rm ${CMAKE_INSTALL_PREFIX}/lib/liblibgo.a ${CMAKE_INSTALL_PREFIX}/lib/liblibgo.so ${CMAKE_INSTALL_PREFIX}/lib/liblibgo_main.a -f
         COMMAND rm ${CMAKE_INSTALL_PREFIX}/include/libgo -rf
     )
+
+    set(INSTALL_ROOT              //home/lsz/dev/code/install_dev/libgo)
+    set(INSTALL_LIB_DIR           ${INSTALL_ROOT}/lib)
+    set(INSTALL_INCLUDE_DIR       ${INSTALL_ROOT}/include)  
+
+    set(ATP_DIR_SRC ${INSTALL_LIB_DIR}
+                    ${INSTALL_INCLUDE_DIR}
+                )
+
+    message("------- 安装的目录信息 ---------")
+    foreach(MY_DIR ${ATP_DIR_SRC})
+        if(NOT EXISTS ${MY_DIR})
+            file(MAKE_DIRECTORY ${MY_DIR})
+            message(STATUS "Created Target Directory: ${MY_DIR}")
+            if(NOT EXISTS ${MY_DIR})
+                message(FATAL_ERROR "Target Directory Create Failed: ${MY_DIR}")
+            endif()
+        endif()   
+        message(STATUS "  ${MY_DIR}")
+    endforeach()    
+
+    install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION ${INSTALL_LIB_DIR})
+    install(DIRECTORY libgo DESTINATION ${INSTALL_INCLUDE_DIR})
 
 elseif (WIN32)
     set_target_properties("${STATIC_T}" PROPERTIES COMPILE_FLAGS "/wd4819 /wd4267")
