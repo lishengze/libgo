@@ -58,6 +58,7 @@ if (UNIX)
     set(CMAKE_CXX_FLAGS "-std=c++11 -D__const__=  -fPIC -fno-strict-aliasing -Wall ${CMAKE_CXX_FLAGS}")
     set(CMAKE_CXX_FLAGS_DEBUG "-g")
     set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 -DNDEBUG")
+    add_definitions(-U__const__) # remove __const__ macro for g++,解决gcc版本问题;
 
     execute_process(COMMAND "chmod" "+x" "${PROJECT_SOURCE_DIR}/third_party/select_asm.sh")
     execute_process(COMMAND "chmod" "+x" "${PROJECT_SOURCE_DIR}/third_party/boost.context/bootstrap.sh")
