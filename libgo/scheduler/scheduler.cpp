@@ -277,20 +277,20 @@ void Scheduler::DispatcherThread()
 
         if (!TryNewProcesserThread(activeTaskProcessorMap, pcount)) continue;
 
-        printf("Original activeTaskProcessorMap: \n");
-        PrintActiveMap(activeTaskProcessorMap);
+        // printf("Original activeTaskProcessorMap: \n");
+        // PrintActiveMap(activeTaskProcessorMap);
 
         DispatchBlocks(blockingProcesserTaskMap,activeTaskProcessorMap);
 
-        printf("After DispatchBlocks activeTaskProcessorMap: \n");
-        PrintActiveMap(activeTaskProcessorMap);
+        // printf("After DispatchBlocks activeTaskProcessorMap: \n");
+        // PrintActiveMap(activeTaskProcessorMap);
 
         // 这个时候应该更新下 activeTaskProcessorMap, 整个的任务分配已经变化了;
         UpdateActiveMap(activeTaskProcessorMap, pcount);
 
         LoadBalance(activeTaskProcessorMap,activeTasks);
-        printf("After LoadBalance activeTaskProcessorMap: \n");
-        PrintActiveMap(activeTaskProcessorMap);       
+        // printf("After LoadBalance activeTaskProcessorMap: \n");
+        // PrintActiveMap(activeTaskProcessorMap);       
     }
 }
 
