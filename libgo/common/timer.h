@@ -268,11 +268,11 @@ void Timer<F>::RunOnce()
 
     DBG_TIMER_CHECK(dt);
 
-    DebugPrint(dbg_timer, "[id=%ld]RunOnce point:<%d><%d><%d><%d> ----> <%d><%d><%d><%d>",
-            this->getId(),
-            (int)last.p8[0], (int)last.p8[1], (int)last.p8[2], (int)last.p8[3],
-            (int)point_.p8[0], (int)point_.p8[1], (int)point_.p8[2], (int)point_.p8[3]
-            );
+    // DebugPrint(dbg_timer, "[id=%ld]RunOnce point:<%d><%d><%d><%d> ----> <%d><%d><%d><%d>",
+    //         this->getId(),
+    //         (int)last.p8[0], (int)last.p8[1], (int)last.p8[2], (int)last.p8[3],
+    //         (int)point_.p8[0], (int)point_.p8[1], (int)point_.p8[2], (int)point_.p8[3]
+    //         );
     DBG_TIMER_CHECK(dt);
 
     // 未扫完的级别 
@@ -295,7 +295,7 @@ void Timer<F>::RunOnce()
         int lv = triggerLevel;
         int slotIdx = pos.p8[lv];
         
-        DebugPrint(dbg_timer, "[id=%ld]RunOnce Trigger(i=%d) [L=%d][%d]", this->getId(), (int)i, lv, slotIdx);
+        // DebugPrint(dbg_timer, "[id=%ld]RunOnce Trigger(i=%d) [L=%d][%d]", this->getId(), (int)i, lv, slotIdx);
         Trigger(slots_[lv][slotIdx]);
         if (++triggerSlots[lv] == 256)
             ++triggerLevel;
@@ -304,7 +304,7 @@ void Timer<F>::RunOnce()
             // 升级
             ++lv;
             slotIdx = pos.p8[lv];
-            DebugPrint(dbg_timer, "[id=%ld]RunOnce Dispatch [L=%d][%d]", this->getId(), lv, slotIdx);
+            // DebugPrint(dbg_timer, "[id=%ld]RunOnce Dispatch [L=%d][%d]", this->getId(), lv, slotIdx);
             dispatchers.push(slots_[lv][slotIdx].pop_all());
             ++triggerSlots[lv];
         }
@@ -323,7 +323,7 @@ void Timer<F>::RunOnce()
     Dispatch(dispatchers, now);
     DBG_TIMER_CHECK(dt);
 
-    DebugPrint(dbg_timer, "[id=%ld]RunOnce Done. DbgTimer: %s", this->getId(), dt.ToString().c_str());
+    // DebugPrint(dbg_timer, "[id=%ld]RunOnce Done. DbgTimer: %s", this->getId(), dt.ToString().c_str());
 }
 
 template <typename F>

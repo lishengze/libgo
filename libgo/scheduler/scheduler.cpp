@@ -510,7 +510,7 @@ void Scheduler::PrintActiveMap(const ActiveMap &activeTaskProcessorMap)
 {
     for(auto &kv : activeTaskProcessorMap)
     {
-        printf("Processer[%d]: Tasks: %d\n", kv.second, kv.first);
+        printf("Processer[%ld]: Tasks: %ld\n", kv.second, kv.first);
     }
 }
 

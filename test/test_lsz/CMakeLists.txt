@@ -20,20 +20,26 @@ ENABLE_LANGUAGE(ASM)
 set(CMAKE_CXX_FLAGS "-std=c++11 -D__const__=  -fPIC -fno-strict-aliasing -Wall ${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-g -O3 -DNDEBUG")
+add_definitions(-U__const__) # remove __const__ macro for g++,解决gcc版本问题;
 
-set(BOOST_ROOT /usr/local/boost_1_68)
+set(BOOST_ROOT /usr/local/boost_1_73)
 
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-execute_process(COMMAND "chmod" "+x" "/home/lsz/Code/Git/study/AnnotatedCode/libgo/third_party/select_asm.sh")
-execute_process(COMMAND "chmod" "+x" "/home/lsz/Code/Git/study/AnnotatedCode/libgo/third_party/boost.context/bootstrap.sh")
-execute_process(COMMAND "chmod" "+x" "/home/lsz/Code/Git/study/AnnotatedCode/libgo/third_party/boost.context/tools/build/src/engine/build.sh")
+get_filename_component(TEST_MAIN "${CMAKE_CURRENT_SOURCE_DIR}" PATH) ## 获取当前工程主目录的路径;
+get_filename_component(WORK_MAIN "${TEST_MAIN}" PATH) ## 获取当前工程主目录的路径;
+
+message("--> work_main: " ${WORK_MAIN})
+
+execute_process(COMMAND "chmod" "+x" "${WORK_MAIN}/third_party/select_asm.sh")
+execute_process(COMMAND "chmod" "+x" "${WORK_MAIN}/third_party/boost.context/bootstrap.sh")
+execute_process(COMMAND "chmod" "+x" "${WORK_MAIN}/third_party/boost.context/tools/build/src/engine/build.sh")
 
 set(CMAKE_ASM_SOURCE_FILE_EXTENSIONS S)
 message("--> select asm source file, please wait about 5 seconds ...")
-execute_process(COMMAND "/home/lsz/Code/Git/study/AnnotatedCode/libgo/third_party/select_asm.sh" "/home/lsz/Code/Git/study/AnnotatedCode/libgo" "jump" OUTPUT_VARIABLE jump_asm_file)
-execute_process(COMMAND "/home/lsz/Code/Git/study/AnnotatedCode/libgo/third_party/select_asm.sh" "/home/lsz/Code/Git/study/AnnotatedCode/libgo" "make" OUTPUT_VARIABLE make_asm_file)
+execute_process(COMMAND "${WORK_MAIN}/third_party/select_asm.sh" "${WORK_MAIN}" "jump" OUTPUT_VARIABLE jump_asm_file)
+execute_process(COMMAND "${WORK_MAIN}/third_party/select_asm.sh" "${WORK_MAIN}" "make" OUTPUT_VARIABLE make_asm_file)
 
 aux_source_directory(../../libgo CO_SRC_LIST)
 aux_source_directory(../../libgo/common CO_SRC_LIST)
@@ -61,6 +67,8 @@ ADD_EXECUTABLE(${BIN_NAME} ${CO_SRC_LIST})
 
 INCLUDE_DIRECTORIES(../../libgo)
 
+link_directories()
+
 # aux_source_directory(../../libgo GO_MAIN)
 # aux_source_directory(../../libgo/common GO_COMMON)
 # aux_source_directory(../../libgo/context GO_CONTEXT)
@@ -85,7 +93,7 @@ INCLUDE_DIRECTORIES(../../libgo)
 # target_link_libraries(${BIN_NAME} ${LINK_LIBS} -ldl)
 TARGET_LINK_LIBRARIES(${BIN_NAME} ${Boost_LIBRARIES})
 TARGET_LINK_LIBRARIES(${BIN_NAME} Threads::Threads)
-TARGET_LINK_LIBRARIES(${BIN_NAME} curl pthread dl)
+TARGET_LINK_LIBRARIES(${BIN_NAME} pthread dl)
 
 # TARGET_LINK_LIBRARIES(${BIN_NAME} c)
 # TARGET_LINK_LIBRARIES(${BIN_NAME} static_hook)
